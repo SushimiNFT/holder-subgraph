@@ -1,70 +1,66 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { Address, BigInt, log } from "@graphprotocol/graph-ts";
 import {
   Sushimi,
   Approval,
   ApprovalForAll,
   OwnershipTransferred,
-  Transfer
-} from "../generated/Sushimi/Sushimi"
-import { ExampleEntity } from "../generated/schema"
+  Transfer,
+} from "../generated/Sushimi/Sushimi";
+import { User, NFT } from "../generated/schema";
 
-export function handleApproval(event: Approval): void {
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
+function getOrCreateUser(address: Address): User {
+  let user = User.load(address.toHexString());
 
-  // Entities only exist after they have been saved to the store;
-  // `null` checks allow to create entities on demand
-  if (!entity) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
-
-    // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
+  if (user === null) {
+    user = new User(address.toHexString());
+    user.nftCount = 0;
+    user.save();
   }
 
-  // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
-
-  // Entity fields can be set based on event parameters
-  entity.owner = event.params.owner
-  entity.approved = event.params.approved
-
-  // Entities can be written to the store with `.save()`
-  entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it fresh with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
-
-  // It is also possible to access smart contracts from mappings. For
-  // example, the contract that has emitted the event can be connected to
-  // with:
-  //
-  // let contract = Contract.bind(event.address)
-  //
-  // The following functions can then be called on this contract to access
-  // state variables and other data:
-  //
-  // - contract.balanceOf(...)
-  // - contract.baseURI(...)
-  // - contract.getApproved(...)
-  // - contract.isApprovedForAll(...)
-  // - contract.name(...)
-  // - contract.owner(...)
-  // - contract.ownerOf(...)
-  // - contract.supportsInterface(...)
-  // - contract.sushimiToken(...)
-  // - contract.symbol(...)
-  // - contract.tokenByIndex(...)
-  // - contract.tokenOfOwnerByIndex(...)
-  // - contract.tokenURI(...)
-  // - contract.totalSupply(...)
+  return user as User;
 }
 
-export function handleApprovalForAll(event: ApprovalForAll): void {}
+function getNFT(id: BigInt): NFT {
+  let nft = NFT.load(id.toString());
 
-export function handleOwnershipTransferred(event: OwnershipTransferred): void {}
+  return nft as NFT;
+}
 
-export function handleTransfer(event: Transfer): void {}
+function createNFT(id: BigInt, owner: Address): NFT {
+  let nft = new NFT(id.toString());
+  nft.user = owner.toHexString();
+  nft.save();
+
+  return nft as NFT;
+}
+
+export function handleTransfer(event: Transfer): void {
+  if (
+    event.params.from.toHexString() ==
+    "0x0000000000000000000000000000000000000000"
+  ) {
+    // Mint
+    let nft = createNFT(event.params.tokenId, event.params.to);
+    let newOwner = getOrCreateUser(event.params.to);
+
+    nft.user = newOwner.id;
+    nft.save();
+
+    newOwner.nftCount = newOwner.nftCount + 1;
+    newOwner.save();
+  } else {
+    // Transfer
+    let nft = getNFT(event.params.tokenId);
+    let oldOwner = getOrCreateUser(event.params.from);
+    let newOwner = getOrCreateUser(event.params.to);
+
+    nft.user = newOwner.id;
+    nft.save();
+
+    oldOwner.nftCount = oldOwner.nftCount - 1;
+    oldOwner.save();
+
+    newOwner.nftCount = newOwner.nftCount + 1;
+    newOwner.save();
+  }
+}

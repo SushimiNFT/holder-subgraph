@@ -1,6 +1,10 @@
-type ExampleEntity @entity {
+type User @entity {
   id: ID!
-  count: BigInt!
-  owner: Bytes! # address
-  approved: Bytes! # address
+  nftCount: Int!
+  nfts: [NFT!] @derivedFrom(field: "user")
+}
+
+type NFT @entity {
+  id: ID!
+  user: User!
 }
